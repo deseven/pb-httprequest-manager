@@ -15,8 +15,11 @@ Macro AddRequests()
   ; a simple POST request with additional flags
   HTTPRequestManager::easyRequest(#PB_HTTP_Post,"https://httpbin.org/post","var=value",#PB_HTTP_NoRedirect)
   
-  ; a simple request which will timeout
-  HTTPRequestManager::easyRequest(#PB_HTTP_Get,"https://httpbin.org/delay/100")
+  ; a simple request which will become stalled after the timeout defined in init()
+  HTTPRequestManager::easyRequest(#PB_HTTP_Get,"http://httpstat.us/200?sleep=30000")
+  
+  ; a simple request which will never answer
+  HTTPRequestManager::easyRequest(#PB_HTTP_Get,"http://www.google.com:81/")
   
   ; a simple request which will return 404
   HTTPRequestManager::easyRequest(#PB_HTTP_Get,"https://httpbin.org/404")
@@ -54,18 +57,27 @@ InitNetwork()
 ; 3 concurrent requests, 3 sec timeout, set user agent, send #ev_HTTP event on completion
 HTTPRequestManager::init(3,3000,"HTTPRequestManager/1.0",#ev_HTTP)
 
+; as of 5.73 LTS on macOS, parallel requests may be bugged and lead to a crash
+; see https://www.purebasic.fr/english/viewtopic.php?f=19&t=77404
+; safe init in that case would be
+; 1 concurrent request, 3 sec timeout, set user agent, send #ev_HTTP event on completion, treat aborting as active
+CompilerIf #PB_Compiler_OS = #PB_OS_MacOS And #PB_Compiler_Version <= 573
+  Debug "applying macOS workaround"
+  HTTPRequestManager::init(1,3000,"HTTPRequestManager/1.0",#ev_HTTP,#True)
+CompilerEndIf
+
 Define ev.i,active.i,activeNew.i,id.i
 Define *response.HTTPRequestManager::response
 Define log.s
 
 Repeat
   
-  ev = WaitWindowEvent(100)
+  ev = WaitWindowEvent(50)
   
   ; needs to be called from time to time
   HTTPRequestManager::process()
   
-  SetGadgetText(2,"Active/Total (" + Str(HTTPRequestManager::getNumActive()) + "/" + Str(HTTPRequestManager::getNumTotal()) + ")")
+  SetGadgetText(2,"Active/Stalled/Total (" + Str(HTTPRequestManager::getNumActive()) + "/" + Str(HTTPRequestManager::getNumStalled()) + "/" + Str(HTTPRequestManager::getNumTotal()) + ")")
   
   Select ev
       
@@ -80,7 +92,7 @@ Repeat
       *response = HTTPRequestManager::getResponse(EventData())
       
       If *response
-        log = "[" + FormatDate("%hh:%ii:%ss",Date()) + "] Finished HTTP request " + Str(EventData()) + " ("
+        log = "[" + FormatDate("%hh:%ii:%ss",Date()) + "] Finished #" + Str(EventData()) + " ("
         Select HTTPRequestManager::getStatus(EventData())
           Case HTTPRequestManager::#TimedOut
             log + "timed out"
@@ -90,7 +102,7 @@ Repeat
             log + "success, "
             log + "code: " + Str(*response\statusCode)
         EndSelect
-        log + ")"
+        log + "), took " + Str(HTTPRequestManager::getTimeTook(EventData())) + "ms"
         AddGadgetItem(0,0,log)
         
         ; actual server answer

@@ -1,4 +1,4 @@
-﻿; pb-httprequest-manager rev.1
+﻿; pb-httprequest-manager rev.2
 ; written by deseven
 ;
 ; https://github.com/deseven/pb-httprequest-manager
@@ -41,9 +41,11 @@ DeclareModule HTTPRequestManager
   Declare easyRequest(Type,URL$,Data$="",Flags=0)
   Declare free(id.i)
   Declare getNumActive()
+  Declare getNumStalled()
   Declare getNumTotal()
   Declare getResponse(id.i)
   Declare getStatus(id.i)
+  Declare getTimeTook(id.i)
   Declare.s getComment(id.i)
   
 EndDeclareModule
@@ -100,6 +102,18 @@ Module HTTPRequestManager
     EndIf
   EndProcedure
   
+  Procedure getNumStalled()
+    Protected numRequests.i
+    If init
+      ForEach requests()
+        If requests()\status = #TimedOutAborting
+          numRequests + 1
+        EndIf
+      Next
+      ProcedureReturn numRequests
+    EndIf
+  EndProcedure
+  
   Procedure getResponse(id.i)
     If init
       ForEach requests()
@@ -119,6 +133,18 @@ Module HTTPRequestManager
       ForEach requests()
         If requests()\id = id
           ProcedureReturn requests()\status
+        EndIf
+      Next
+    EndIf
+  EndProcedure
+  
+  Procedure getTimeTook(id.i)
+    If init
+      ForEach requests()
+        If requests()\id = id
+          If requests()\finished > 0
+            ProcedureReturn requests()\finished - requests()\started
+          EndIf
         EndIf
       Next
     EndIf
@@ -246,7 +272,7 @@ Module HTTPRequestManager
                     PostEvent(requests()\request\finishEvent,-1,-1,-1,requests()\id)
                 EndIf
               Default
-                If requests()\request\timeout > 0
+                If requests()\request\timeout > 0 And requests()\status = #InProgress
                   If requests()\started + requests()\request\timeout < ElapsedMilliseconds()
                     requests()\status = #TimedOutAborting
                     AbortHTTP(requests()\httpRequestID)
