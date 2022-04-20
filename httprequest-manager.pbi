@@ -35,7 +35,7 @@ DeclareModule HTTPRequestManager
     #Success
   EndEnumeration
   
-  Declare init(MaxConcurrentRequests.b=3,DefaultRequestTimeout.i=30000,DefaultUserAgent.s="",DefaultFinishEvent=0,TreatAbortingAsActive.b=#False)
+  Declare init(MaxConcurrentRequests.c=3,DefaultRequestTimeout.i=30000,DefaultUserAgent.s="",DefaultFinishEvent=0,TreatAbortingAsActive.b=#False)
   Declare process()
   Declare request(*request.request)
   Declare easyRequest(Type,URL$,Data$="",Flags=0)
@@ -64,14 +64,14 @@ Module HTTPRequestManager
   EndStructure
   
   Global init.b
-  Global concurrentRequests.b
+  Global concurrentRequests.c
   Global defaultTimeout.l
   Global defaultEvent.i
   Global abortingIsActive.b
   Global userAgent.s
   Global NewList requests.requestInternal()
   
-  Procedure init(MaxConcurrentRequests.b = 3,DefaultRequestTimeout.i = 30000,DefaultUserAgent.s = "",DefaultFinishEvent = 0,TreatAbortingAsActive.b = #False)
+  Procedure init(MaxConcurrentRequests.c = 3,DefaultRequestTimeout.i = 30000,DefaultUserAgent.s = "",DefaultFinishEvent = 0,TreatAbortingAsActive.b = #False)
     userAgent          = DefaultUserAgent
     concurrentRequests = MaxConcurrentRequests
     defaultTimeout     = DefaultRequestTimeout
