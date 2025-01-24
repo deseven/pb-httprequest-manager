@@ -16,7 +16,7 @@ Macro AddRequests()
   HTTPRequestManager::easyRequest(#PB_HTTP_Post,"https://httpbin.org/post","var=value",#PB_HTTP_NoRedirect)
   
   ; a simple request which will become stalled after the timeout defined in init()
-  HTTPRequestManager::easyRequest(#PB_HTTP_Get,"http://httpstat.us/200?sleep=30000")
+  HTTPRequestManager::easyRequest(#PB_HTTP_Get,"http://httpstat.us/200?sleep=10000")
   
   ; a simple request which will never answer
   HTTPRequestManager::easyRequest(#PB_HTTP_Get,"http://www.google.com:81/")
@@ -51,20 +51,8 @@ EditorGadget(0,0,0,400,270,#PB_Editor_WordWrap|#PB_Editor_ReadOnly)
 ButtonGadget(1,0,270,200,30,"Add requests")
 TextGadget(2,200,276,195,30,"Active/Total",#PB_Text_Right)
 
-; this is required, obviously
-InitNetwork()
-
 ; 3 concurrent requests, 3 sec timeout, set user agent, send #ev_HTTP event on completion
 HTTPRequestManager::init(3,3000,"HTTPRequestManager/1.0",#ev_HTTP)
-
-; as of 5.73 LTS on macOS, parallel requests may be bugged and lead to a crash
-; see https://www.purebasic.fr/english/viewtopic.php?f=19&t=77404
-; safe init in that case would be
-; 1 concurrent request, 3 sec timeout, set user agent, send #ev_HTTP event on completion, treat aborting as active
-CompilerIf #PB_Compiler_OS = #PB_OS_MacOS And #PB_Compiler_Version <= 573
-  Debug "applying macOS workaround"
-  HTTPRequestManager::init(1,3000,"HTTPRequestManager/1.0",#ev_HTTP,#True)
-CompilerEndIf
 
 Define ev.i,active.i,activeNew.i,id.i
 Define *response.HTTPRequestManager::response
@@ -100,15 +88,16 @@ Repeat
             log + "failed, " + *response\error
           Case HTTPRequestManager::#Success
             log + "success, "
-            log + "code: " + Str(*response\statusCode)
+            log + "code " + Str(*response\statusCode)
+            log + ", " + Str(HTTPRequestManager::getDownloadedBytes(EventData())) + " bytes"
         EndSelect
         log + "), took " + Str(HTTPRequestManager::getTimeTook(EventData())) + "ms"
         AddGadgetItem(0,0,log)
         
         ; actual server answer
-        If *response\response
+        If *response\text
           Debug "response for " + Str(EventData()) + ":"
-          Debug *response\response
+          Debug *response\text
           Debug "====="
         EndIf
         

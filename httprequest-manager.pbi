@@ -21,7 +21,8 @@ DeclareModule HTTPRequestManager
   Structure response
     result.b
     statusCode.l
-    response.s
+    text.s
+    binary.i
     headers.s
     error.s
   EndStructure
@@ -38,13 +39,14 @@ DeclareModule HTTPRequestManager
   Declare init(MaxConcurrentRequests.c=3,DefaultRequestTimeout.i=30000,DefaultUserAgent.s="",DefaultFinishEvent=0,TreatAbortingAsActive.b=#False)
   Declare process()
   Declare request(*request.request)
-  Declare easyRequest(Type,URL$,Data$="",Flags=0)
+  Declare easyRequest(Type,URL$,Data$="",Flags=0,FinishEvent=0)
   Declare free(id.i)
   Declare getNumActive()
   Declare getNumStalled()
   Declare getNumTotal()
   Declare getResponse(id.i)
   Declare getStatus(id.i)
+  Declare getDownloadedBytes(id.i)
   Declare getTimeTook(id.i)
   Declare.s getComment(id.i)
   
@@ -59,6 +61,7 @@ Module HTTPRequestManager
     started.i
     finished.i
     remove.b
+    bytes.i
     request.request
     response.response
   EndStructure
@@ -138,6 +141,16 @@ Module HTTPRequestManager
     EndIf
   EndProcedure
   
+  Procedure getDownloadedBytes(id.i)
+    If init
+      ForEach requests()
+        If requests()\id = id
+          ProcedureReturn requests()\bytes
+        EndIf
+      Next
+    EndIf
+  EndProcedure
+  
   Procedure getTimeTook(id.i)
     If init
       ForEach requests()
@@ -204,13 +217,14 @@ Module HTTPRequestManager
     ProcedureReturn HTTPRequest(*request\request\type,*request\request\url,*request\request\textData,*request\request\flags,*request\request\headers())
   EndProcedure
   
-  Procedure easyRequest(Type,URL$,Data$ = "",Flags = 0)
+  Procedure easyRequest(Type,URL$,Data$ = "",Flags = 0,FinishEvent = 0)
     If init
       Protected request.request
       request\url = URL$
       request\textData = Data$
       request\flags = Flags
       request\type = Type
+      request\finishEvent = FinishEvent
       ProcedureReturn request(@request)
     EndIf
   EndProcedure
@@ -248,38 +262,45 @@ Module HTTPRequestManager
   Procedure process()
     If ListSize(requests())
       ForEach requests()
-        Select requests()\status
-          Case #TimedOutAborting,#InProgress
-            Protected progress.i = HTTPProgress(requests()\httpRequestID)
-            Select progress
-              Case #PB_HTTP_Success,#PB_HTTP_Failed,#PB_HTTP_Aborted
-                Select progress
-                  Case #PB_HTTP_Success
-                    requests()\status = #Success
-                  Case #PB_HTTP_Failed
-                    requests()\status = #Failed
-                  Case #PB_HTTP_Aborted
-                    requests()\status = #TimedOut
-                EndSelect
-                requests()\finished = ElapsedMilliseconds()
-                requests()\response\response = HTTPInfo(requests()\httpRequestID,#PB_HTTP_Response)
-                requests()\response\statusCode = Val(HTTPInfo(requests()\httpRequestID,#PB_HTTP_StatusCode))
-                requests()\response\headers = HTTPInfo(requests()\httpRequestID,#PB_HTTP_Headers)
-                requests()\response\error = HTTPInfo(requests()\httpRequestID,#PB_HTTP_ErrorMessage)
-                FinishHTTP(requests()\httpRequestID)
-                requests()\httpRequestID = 0
-                If requests()\request\finishEvent > 0
-                    PostEvent(requests()\request\finishEvent,-1,-1,-1,requests()\id)
-                EndIf
-              Default
-                If requests()\request\timeout > 0 And requests()\status = #InProgress
-                  If requests()\started + requests()\request\timeout < ElapsedMilliseconds()
-                    requests()\status = #TimedOutAborting
-                    AbortHTTP(requests()\httpRequestID)
+        With requests()
+          Select \status
+            Case #TimedOutAborting,#InProgress
+              Protected progress.i = HTTPProgress(\httpRequestID)
+              Select progress
+                Case #PB_HTTP_Success,#PB_HTTP_Failed,#PB_HTTP_Aborted
+                  Select progress
+                    Case #PB_HTTP_Success
+                      \status = #Success
+                    Case #PB_HTTP_Failed
+                      \status = #Failed
+                    Case #PB_HTTP_Aborted
+                      \status = #TimedOut
+                  EndSelect
+                  \finished = ElapsedMilliseconds()
+                  If progress = #PB_HTTP_Success
+                    \response\text = HTTPInfo(\httpRequestID,#PB_HTTP_Response)
+                    \response\binary = HTTPMemory(\httpRequestID)
+                    \bytes = MemorySize(\response\binary)
+                    \response\statusCode = Val(HTTPInfo(\httpRequestID,#PB_HTTP_StatusCode))
+                    \response\headers = HTTPInfo(\httpRequestID,#PB_HTTP_Headers)
                   EndIf
-                EndIf
-            EndSelect
-        EndSelect
+                  \response\error = HTTPInfo(\httpRequestID,#PB_HTTP_ErrorMessage)
+                  FinishHTTP(\httpRequestID)
+                  \httpRequestID = 0
+                  If \request\finishEvent > 0
+                    PostEvent(\request\finishEvent,-1,-1,-1,\id)
+                  EndIf
+                Default
+                  \bytes = progress
+                  If \request\timeout > 0 And \status = #InProgress
+                    If \started + \request\timeout < ElapsedMilliseconds()
+                      \status = #TimedOutAborting
+                      AbortHTTP(\httpRequestID)
+                    EndIf
+                  EndIf
+              EndSelect
+          EndSelect
+        EndWith
       Next
       
       If getNumActive() < concurrentRequests
